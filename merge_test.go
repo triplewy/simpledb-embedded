@@ -9,9 +9,9 @@ import (
 )
 
 func TestMergeMMap(t *testing.T) {
-	err := deleteData("data")
+	_, err := setupDB("data")
 	if err != nil {
-		t.Fatalf("Error deleting data: %v\n", err)
+		t.Fatalf("Error setting up DB: %v\n", err)
 	}
 
 	memorykv := make(map[string]string)

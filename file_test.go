@@ -9,9 +9,9 @@ import (
 )
 
 func TestFileGet(t *testing.T) {
-	err := deleteData("data")
+	_, err := setupDB("data")
 	if err != nil {
-		t.Fatalf("Error deleting data: %v\n", err)
+		t.Fatalf("Error setting up DB: %v\n", err)
 	}
 	entries := []*Entry{}
 	for i := 1000; i < 10000; i++ {
@@ -84,13 +84,11 @@ func TestFileGet(t *testing.T) {
 	}
 }
 func TestFileRange(t *testing.T) {
-	err := deleteData("data")
+	_, err := setupDB("data")
 	if err != nil {
-		t.Fatalf("Error deleting data: %v\n", err)
+		t.Fatalf("Error setting up DB: %v\n", err)
 	}
-
 	entries := []*Entry{}
-
 	for i := 0; i < 10000; i++ {
 		key := strconv.Itoa(int(math.Pow10(9)) + i)
 		entry := simpleEntry(uint64(i), key, key)

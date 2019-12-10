@@ -14,7 +14,7 @@ func TestRecoverLevels(t *testing.T) {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
 
-	numItems := 100000
+	numItems := 10000
 	memorykv := make(map[string]string)
 	entries := []*Entry{}
 
@@ -30,7 +30,7 @@ func TestRecoverLevels(t *testing.T) {
 	}
 
 	keys := []string{}
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < 5000; i++ {
 		key := strconv.Itoa(1000000000000000000 + i)
 		keys = append(keys, key)
 	}
@@ -48,7 +48,7 @@ func TestRecoverLevels(t *testing.T) {
 	}
 
 	keys = []string{}
-	for i := 0; i < 50000; i++ {
+	for i := 0; i < 5000; i++ {
 		key := strconv.Itoa(1000000000000000000 + i)
 		keys = append(keys, key)
 	}
@@ -65,7 +65,7 @@ func TestRecoverUnexpected(t *testing.T) {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
 
-	numItems := 50000
+	numItems := 20000
 	memorykv := make(map[string]string)
 	closeChan := make(chan struct{}, 1)
 	success := true
