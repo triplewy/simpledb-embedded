@@ -295,3 +295,21 @@ func TestDBRandom(t *testing.T) {
 		t.Fatalf("Error Reading from LSM: %v\n", err)
 	}
 }
+
+func BenchmarkDBWrite(b *testing.B) {
+	db, err := setupDB("data")
+	if err != nil {
+		b.Fatalf("Error setting up DB: %v\n", err)
+	}
+	b.Run("Write", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			db.UpdateTxn(func(txn *Txn) error {
+				txn.Write("test", map[string]*Value{"value": &Value{
+					DataType: Bytes,
+					Data:     []byte("test"),
+				}})
+				return nil
+			})
+		}
+	})
+}

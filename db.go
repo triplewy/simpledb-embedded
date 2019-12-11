@@ -210,12 +210,10 @@ func (db *DB) flush(mt *memTable) error {
 		return err
 	}
 	// Truncate the WAL
-	err = os.Truncate(mt.wal, 0)
+	err = mt.Truncate()
 	if err != nil {
 		return err
 	}
-	mt.table = newAVLTree()
-	mt.size = 0
 	return nil
 }
 
