@@ -38,20 +38,20 @@ func recoverBloom(bits []byte) *bloom {
 }
 
 // Insert inserts a key into the bloom filter
-func (bloom *bloom) Insert(key string) {
+func (bloom *bloom) Insert(key []byte) {
 	for i := uint32(0); i < bloom.k; i++ {
 		hasher := murmur3.New64WithSeed(i)
-		hasher.Write([]byte(key))
+		hasher.Write(key)
 		index := hasher.Sum64() % bloom.size
 		bloom.bits[index] = byte(1)
 	}
 }
 
 // Check checks if a key exists in the bloom filter
-func (bloom *bloom) Check(key string) bool {
+func (bloom *bloom) Check(key []byte) bool {
 	for i := uint32(0); i < bloom.k; i++ {
 		hasher := murmur3.New64WithSeed(i)
-		hasher.Write([]byte(key))
+		hasher.Write(key)
 		index := hasher.Sum64() % bloom.size
 		if bloom.bits[index] == byte(0) {
 			return false

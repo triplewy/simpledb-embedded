@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -14,7 +15,6 @@ type DB struct {
 	mutable   *memTable
 	immutable *memTable
 	lsm       *lsm
-	memory    *memory
 
 	writeChan chan *writeRequest
 	flushChan chan *memTable
@@ -44,26 +44,20 @@ func NewDB(directory string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	maxCommitTs := maxCommitTs1
 	if maxCommitTs2 > maxCommitTs {
 		maxCommitTs = maxCommitTs2
 	}
-
 	db := &DB{
 		mutable:   memtable1,
 		immutable: memtable2,
 
-		writeChan: make(chan *writeRequest),
-		flushChan: make(chan *memTable),
-
 		lsm: lsm,
 
-		memory: newMemory(),
-
-		close: make(chan struct{}, 1),
+		writeChan: make(chan *writeRequest),
+		flushChan: make(chan *memTable),
+		close:     make(chan struct{}, 1),
 	}
-
 	oracle := newOracle(maxCommitTs+1, db)
 	db.oracle = oracle
 
@@ -71,32 +65,6 @@ func NewDB(directory string) (*DB, error) {
 	go db.runFlush()
 
 	return db, nil
-}
-
-// newTxn returns a new Txn to perform ops on
-func (db *DB) newTxn() *Txn {
-	startTs := db.oracle.requestStart()
-	return &Txn{
-		db:         db,
-		startTs:    startTs,
-		writeCache: make(map[string]*Entry),
-		readSet:    make(map[string]uint64),
-	}
-}
-
-// ViewTxn implements a read only transaction to the DB. Ensures read only since it does not commit at end
-func (db *DB) ViewTxn(fn func(txn *Txn) error) error {
-	txn := db.newTxn()
-	return fn(txn)
-}
-
-// UpdateTxn implements a read and write only transaction to the DB
-func (db *DB) UpdateTxn(fn func(txn *Txn) error) error {
-	txn := db.newTxn()
-	if err := fn(txn); err != nil {
-		return err
-	}
-	return txn.commit()
 }
 
 // write inserts multiple entries into DB
@@ -111,25 +79,27 @@ func (db *DB) write(entries []*Entry) error {
 }
 
 // get retrieves Fields for a given key or returns key not found
-func (db *DB) read(key string, ts uint64) (*Entry, error) {
-	if len(key) > KeySize {
-		return nil, newErrExceedMaxKeySize(key)
+func (db *DB) read(primaryKey, rangeKey []byte, ts uint64) (*Entry, error) {
+	err := checkKeySize(primaryKey, rangeKey)
+	if err != nil {
+		return nil, err
 	}
-	entry := db.mutable.table.Find(key, ts)
+	key := append(primaryKey, rangeKey...)
+	entry := db.mutable.table.Find(string(key), ts)
 	if entry != nil {
 		if entry.Fields == nil {
 			return nil, newErrKeyNotFound()
 		}
 		return entry, nil
 	}
-	entry = db.immutable.table.Find(key, ts)
+	entry = db.immutable.table.Find(string(key), ts)
 	if entry != nil {
 		if entry.Fields == nil {
 			return nil, newErrKeyNotFound()
 		}
 		return entry, nil
 	}
-	entry, err := db.lsm.Read(key, ts)
+	entry, err = db.lsm.Read(primaryKey, rangeKey, ts)
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +107,27 @@ func (db *DB) read(key string, ts uint64) (*Entry, error) {
 		return nil, newErrKeyNotFound()
 	}
 	return entry, nil
+}
+
+func (db *DB) query(primaryKey []byte, startKey, endKey []byte, ts uint64) ([]*Entry, error) {
+	err := checkKeySize(primaryKey, startKey)
+	if err != nil {
+		return nil, err
+	}
+	err = checkKeySize(primaryKey, endKey)
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Compare(startKey, endKey) > 0 {
+		return nil, errors.New("Start Key is greater than End Key")
+	}
+	keyRange := &keyRange{
+		startKey: string(append(primaryKey, startKey...)),
+		endKey:   string(append(primaryKey, endKey...)),
+	}
+	all := []*Entry{}
+	all = append(all, db.mutable.table.Scan(keyRange, ts)...)
+	all = append(all, db.immutable.table.Scan(keyRange, ts)...)
 }
 
 // range finds all key, value pairs within the given range of keys
@@ -200,12 +191,8 @@ func (db *DB) checkPrimaryKey(key string) (bool, error) {
 // Flush takes all entries from the in-memory table and sends them to lsm
 func (db *DB) flush(mt *memTable) error {
 	entries := mt.table.Inorder()
-	dataBlocks, indexBlock, bloom, keyRange, err := writeEntries(entries)
-	if err != nil {
-		return err
-	}
 	// Flush to lsm
-	err = db.lsm.Write(dataBlocks, indexBlock, bloom, keyRange)
+	err := db.lsm.Write(entries)
 	if err != nil {
 		return err
 	}

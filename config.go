@@ -28,7 +28,7 @@ const compactThreshold = 4
 
 const multiplier = MB
 
-const headerSize = 32
+const headerSize = 40
 
 const numWorkers = 50
 
@@ -41,6 +41,7 @@ const filePerm = 0600
 const (
 	Bool uint8 = iota
 	Int
+	Uint
 	Float
 	String
 	Bytes

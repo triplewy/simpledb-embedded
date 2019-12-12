@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"encoding/binary"
 	"os"
 )
@@ -72,7 +73,7 @@ func recoverFile(filename string) (keyRange *keyRange, bloom *bloom, size int, e
 	return keyRange, bloom, int(dataSize + indexSize + bloomSize + keyRangeSize), nil
 }
 
-func fileFind(filename, key string, ts uint64) (entry *Entry, err error) {
+func fileFind(filename string, key []byte, ts uint64) (entry *Entry, err error) {
 	f, err := os.OpenFile(filename, os.O_RDONLY, filePerm)
 	defer f.Close()
 	if err != nil {
@@ -136,7 +137,7 @@ func fileRange(filename string, keyRange *keyRange, ts uint64) (entries []*Entry
 	return findKeysInBlocks(keyRange, ts, blocks)
 }
 
-func findDataBlock(key string, data []byte) (uint32, error) {
+func findDataBlock(key []byte, data []byte) (uint32, error) {
 	i := 0
 	for i < len(data) {
 		size := uint8(data[i])
@@ -144,12 +145,12 @@ func findDataBlock(key string, data []byte) (uint32, error) {
 		if i+int(size) > len(data) {
 			break
 		}
-		indexKey := string(data[i : i+int(size)])
+		indexKey := data[i : i+int(size)]
 		i += int(size)
 		if i+4 > len(data) {
 			break
 		}
-		if key <= indexKey {
+		if bytes.Compare(key, indexKey) <= 0 {
 			return binary.LittleEndian.Uint32(data[i : i+4]), nil
 		}
 		i += 4
@@ -157,20 +158,20 @@ func findDataBlock(key string, data []byte) (uint32, error) {
 	return 0, newErrKeyNotFound()
 }
 
-func findKeyInBlock(key string, ts uint64, data []byte) (*Entry, error) {
+func findKeyInBlock(primaryKey, rangeKey []byte, ts uint64, data []byte) (*Entry, error) {
 	entries, err := decodeEntries(data)
 	if err != nil {
 		return nil, err
 	}
 	for _, entry := range entries {
-		if entry.Key == key && entry.ts < ts {
+		if bytes.Compare(entry.PrimaryKey, primaryKey) == 0 && bytes.Compare(entry.RangeKey, rangeKey) == 0 && entry.ts < ts {
 			return entry, nil
 		}
 	}
 	return nil, newErrKeyNotFound()
 }
 
-func rangeDataBlocks(startKey, endKey string, data []byte) (startBlock, endBlock uint32) {
+func rangeDataBlocks(startKey, endKey []byte, data []byte) (startBlock, endBlock uint32) {
 	foundStartBlock := false
 	block := uint32(0)
 	i := 0

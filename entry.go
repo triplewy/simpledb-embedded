@@ -7,9 +7,11 @@ import (
 
 // Entry represents a row in the db where a key is mapped to multiple Fields
 type Entry struct {
-	ts     uint64
-	Key    string
-	Fields map[string]*Value
+	ts         uint64
+	PrimaryKey []byte
+	RangeKey   []byte
+	totalKey   []byte
+	Fields     map[string]*Value
 }
 
 // Value combines a slice of bytes with a data type in order to parse data
@@ -18,7 +20,40 @@ type Value struct {
 	Data     []byte
 }
 
-func parseValue(value *Value) (interface{}, error) {
+// CreateValue converts an arbitrary typed value into a Value struct
+func CreateValue(value interface{}) (*Value, error) {
+	switch v := value.(type) {
+	case bool:
+		value := []byte{0}
+		if v {
+			value = []byte{1}
+		}
+		return &Value{DataType: Bool, Data: value}, nil
+	case int64:
+		value := make([]byte, 8)
+		binary.LittleEndian.PutUint64(value, uint64(v))
+		return &Value{DataType: Int, Data: value}, nil
+	case uint64:
+		value := make([]byte, 8)
+		binary.LittleEndian.PutUint64(value, v)
+		return &Value{DataType: Uint, Data: value}, nil
+	case float64:
+		value := make([]byte, 8)
+		binary.LittleEndian.PutUint64(value, math.Float64bits(v))
+		return &Value{DataType: Float, Data: value}, nil
+	case string:
+		return &Value{DataType: String, Data: []byte(v)}, nil
+	case []byte:
+		return &Value{DataType: Bytes, Data: v}, nil
+	case nil:
+		return &Value{DataType: Tombstone, Data: []byte{}}, nil
+	default:
+		return nil, newErrNoTypeFound()
+	}
+}
+
+// ParseValue converts a Value struct to an interface value
+func ParseValue(value *Value) (interface{}, error) {
 	data := value.Data
 	switch value.DataType {
 	case Bool:
@@ -37,6 +72,11 @@ func parseValue(value *Value) (interface{}, error) {
 			return nil, newErrParseValue(value)
 		}
 		return int64(binary.LittleEndian.Uint64(data)), nil
+	case Uint:
+		if len(data) != 8 {
+			return nil, newErrParseValue(value)
+		}
+		return binary.LittleEndian.Uint64(data), nil
 	case Float:
 		if len(data) != 8 {
 			return nil, newErrParseValue(value)
@@ -51,49 +91,27 @@ func parseValue(value *Value) (interface{}, error) {
 	}
 }
 
-// indexEntry is struct that represents an entry into an lsm Index Block
-type indexEntry struct {
-	key   string
-	block uint32
-}
-
-func createEntry(ts uint64, key string, Fields map[string]interface{}) (*Entry, error) {
-	if len(key) > KeySize {
-		return nil, newErrExceedMaxKeySize(key)
+func createEntry(ts uint64, primaryKey, rangeKey []byte, fields map[string]interface{}) (*Entry, error) {
+	err := checkKeySize(primaryKey, rangeKey)
+	if err != nil {
+		return nil, err
 	}
-	if len(Fields) > MaxFields {
+	if len(fields) > MaxFields {
 		return nil, newErrExceedMaxFields()
 	}
 	entry := &Entry{
-		ts:     ts,
-		Key:    key,
-		Fields: make(map[string]*Value),
+		ts:         ts,
+		PrimaryKey: primaryKey,
+		RangeKey:   rangeKey,
+		totalKey:   append(primaryKey, rangeKey...),
+		Fields:     make(map[string]*Value),
 	}
-	for name, data := range Fields {
-		switch v := data.(type) {
-		case bool:
-			value := []byte{0}
-			if v {
-				value = []byte{1}
-			}
-			entry.Fields[name] = &Value{DataType: Bool, Data: value}
-		case int64:
-			value := make([]byte, 8)
-			binary.LittleEndian.PutUint64(value, uint64(v))
-			entry.Fields[name] = &Value{DataType: Int, Data: value}
-		case float64:
-			value := make([]byte, 8)
-			binary.LittleEndian.PutUint64(value, math.Float64bits(v))
-			entry.Fields[name] = &Value{DataType: Float, Data: value}
-		case string:
-			entry.Fields[name] = &Value{DataType: String, Data: []byte(v)}
-		case []byte:
-			entry.Fields[name] = &Value{DataType: Bytes, Data: v}
-		case nil:
-			entry.Fields[name] = &Value{DataType: Tombstone, Data: []byte{}}
-		default:
-			return nil, newErrNoTypeFound()
+	for name, data := range fields {
+		value, err := CreateValue(data)
+		if err != nil {
+			return nil, err
 		}
+		entry.Fields[name] = value
 	}
 	totalSize := 0
 	for _, value := range entry.Fields {
@@ -108,8 +126,10 @@ func createEntry(ts uint64, key string, Fields map[string]interface{}) (*Entry, 
 func encodeEntry(entry *Entry) (data []byte) {
 	tsBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(tsBytes, entry.ts)
-	keySizeBytes := uint8(len(entry.Key))
-	keyBytes := []byte(entry.Key)
+	pKeySizeBytes := uint8(len(entry.PrimaryKey))
+	pKeyBytes := []byte(entry.PrimaryKey)
+	rKeySizeBytes := uint8(len(entry.RangeKey))
+	rKeyBytes := []byte(entry.RangeKey)
 	FieldsBytes := []byte{}
 
 	for name, value := range entry.Fields {
@@ -131,8 +151,10 @@ func encodeEntry(entry *Entry) (data []byte) {
 	}
 
 	data = append(data, tsBytes...)
-	data = append(data, keySizeBytes)
-	data = append(data, keyBytes...)
+	data = append(data, pKeySizeBytes)
+	data = append(data, pKeyBytes...)
+	data = append(data, rKeySizeBytes)
+	data = append(data, rKeyBytes...)
 	data = append(data, FieldsBytes...)
 
 	totalSize := uint32(len(data))
@@ -149,11 +171,12 @@ func decodeEntry(data []byte) (*Entry, error) {
 		keyBytes
 		fieldBytes
 	)
-	Fields := make(map[string]*Value)
+	fields := make(map[string]*Value)
 	entry := &Entry{
-		ts:     0,
-		Key:    "",
-		Fields: nil,
+		ts:         0,
+		PrimaryKey: nil,
+		RangeKey:   nil,
+		Fields:     nil,
 	}
 	step := tsBytes
 	i := 0
@@ -167,13 +190,21 @@ func decodeEntry(data []byte) (*Entry, error) {
 			i += 8
 			step = keyBytes
 		case keyBytes:
-			keySize := uint8(data[i])
+			pKeySize := uint8(data[i])
 			i++
-			if i+int(keySize) > len(data) {
+			if i+int(pKeySize) > len(data) {
 				return nil, newErrDecodeEntry()
 			}
-			entry.Key = string(data[i : i+int(keySize)])
-			i += int(keySize)
+			entry.PrimaryKey = data[i : i+int(pKeySize)]
+			i += int(pKeySize)
+			rKeySize := uint8(data[i])
+			i++
+			if i+int(rKeySize) > len(data) {
+				return nil, newErrDecodeEntry()
+			}
+			entry.RangeKey = data[i : i+int(rKeySize)]
+			entry.totalKey = append(entry.PrimaryKey, entry.RangeKey...)
+			i += int(rKeySize)
 			step = fieldBytes
 		case fieldBytes:
 			fieldNameSize := uint8(data[i])
@@ -194,14 +225,14 @@ func decodeEntry(data []byte) (*Entry, error) {
 				return nil, newErrDecodeEntry()
 			}
 			fieldData := data[i : i+int(fieldDataSize)]
-			Fields[fieldName] = &Value{DataType: fieldType, Data: fieldData}
+			fields[fieldName] = &Value{DataType: fieldType, Data: fieldData}
 			i += int(fieldDataSize)
 		default:
 			return nil, newErrDecodeEntry()
 		}
 	}
-	if len(Fields) > 0 {
-		entry.Fields = Fields
+	if len(fields) > 0 {
+		entry.Fields = fields
 	}
 	return entry, nil
 }
@@ -233,12 +264,14 @@ func decodeEntries(data []byte) (entries []*Entry, err error) {
 	return entries, nil
 }
 
-func writeEntries(entries []*Entry) (dataBlocks, indexBlock []byte, bloom *bloom, kr *keyRange, err error) {
+func writeEntries(entries []*Entry) (dataBlocks, indexBlock []byte, pBloom, rBloom *bloom, kr *keyRange, err error) {
 	kr = &keyRange{
-		startKey: entries[0].Key,
-		endKey:   entries[len(entries)-1].Key,
+		startKey: string(entries[0].totalKey),
+		endKey:   string(entries[len(entries)-1].totalKey),
 	}
-	bloom = newBloom(len(entries))
+	pSet := make(map[string]struct{})
+	rSet := make(map[string]struct{})
+
 	block := make([]byte, BlockSize)
 	currBlock := uint32(0)
 	i := 0
@@ -248,7 +281,7 @@ func writeEntries(entries []*Entry) (dataBlocks, indexBlock []byte, bloom *bloom
 		if i+len(entryBytes) > BlockSize {
 			dataBlocks = append(dataBlocks, block...)
 			indexEntry := encodeIndexEntry(&indexEntry{
-				key:   entries[index-1].Key,
+				key:   entries[index-1].totalKey,
 				block: currBlock,
 			})
 			indexBlock = append(indexBlock, indexEntry...)
@@ -257,23 +290,38 @@ func writeEntries(entries []*Entry) (dataBlocks, indexBlock []byte, bloom *bloom
 			i = 0
 		}
 		i += copy(block[i:], entryBytes)
-		bloom.Insert(entry.Key)
+		pSet[string(entry.PrimaryKey)] = struct{}{}
+		rSet[string(entry.RangeKey)] = struct{}{}
 		// If last entry, append data block and index entry
 		if index == len(entries)-1 {
 			dataBlocks = append(dataBlocks, block...)
 			indexEntry := encodeIndexEntry(&indexEntry{
-				key:   entry.Key,
+				key:   entry.totalKey,
 				block: currBlock,
 			})
 			indexBlock = append(indexBlock, indexEntry...)
 		}
 	}
-	return dataBlocks, indexBlock, bloom, kr, nil
+	pBloom = newBloom(len(pSet))
+	rBloom = newBloom(len(rSet))
+	for key := range pSet {
+		pBloom.Insert([]byte(key))
+	}
+	for key := range rSet {
+		rBloom.Insert([]byte(key))
+	}
+	return dataBlocks, indexBlock, pBloom, rBloom, kr, nil
+}
+
+// indexEntry is struct that represents an entry into an lsm Index Block
+type indexEntry struct {
+	key   []byte
+	block uint32
 }
 
 func encodeIndexEntry(entry *indexEntry) (data []byte) {
 	data = append(data, uint8(len(entry.key)))
-	data = append(data, []byte(entry.key)...)
+	data = append(data, entry.key...)
 	blockBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(blockBytes, entry.block)
 	data = append(data, blockBytes...)

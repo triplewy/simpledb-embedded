@@ -22,7 +22,7 @@ type avlTree struct {
 
 func newAVLNode(entry *Entry) *avlNode {
 	return &avlNode{
-		key:     entry.Key,
+		key:     string(entry.totalKey),
 		entries: []*Entry{entry},
 
 		left:   nil,
@@ -49,7 +49,6 @@ func (tree *avlTree) Put(entry *Entry) {
 func (tree *avlTree) Find(key string, ts uint64) *Entry {
 	tree.RLock()
 	defer tree.RUnlock()
-
 	return find(tree.root, key, ts)
 }
 
@@ -75,21 +74,22 @@ func (tree *avlTree) Inorder() []*Entry {
 func (tree *avlTree) Preorder() []string {
 	tree.RLock()
 	defer tree.RUnlock()
-	pairs := preorder(tree.root)
-	result := make([]string, len(pairs))
-	for i, pair := range pairs {
-		result[i] = pair.Key
+	entries := preorder(tree.root)
+	result := make([]string, len(entries))
+	for i, entry := range entries {
+		result[i] = string(entry.totalKey)
 	}
 	return result
 }
 
 func put(root *avlNode, entry *Entry) *avlNode {
+	key := string(entry.totalKey)
 	if root == nil {
 		return newAVLNode(entry)
-	} else if entry.Key == root.key {
+	} else if key == root.key {
 		root.entries = append([]*Entry{entry}, root.entries...)
 		return root
-	} else if entry.Key < root.key {
+	} else if key < root.key {
 		root.left = put(root.left, entry)
 	} else {
 		root.right = put(root.right, entry)
@@ -99,20 +99,20 @@ func put(root *avlNode, entry *Entry) *avlNode {
 	balance := getBalance(root)
 
 	// Case 1 - Left Left
-	if balance > 1 && entry.Key < root.left.key {
+	if balance > 1 && key < root.left.key {
 		return rightRotate(root)
 	}
 	// Case 2 - Right Right
-	if balance < -1 && entry.Key > root.right.key {
+	if balance < -1 && key > root.right.key {
 		return leftRotate(root)
 	}
 	// Case 3 - Left Right
-	if balance > 1 && entry.Key > root.left.key {
+	if balance > 1 && key > root.left.key {
 		root.left = leftRotate(root.left)
 		return rightRotate(root)
 	}
 	// Case 4 - Right Left
-	if balance < -1 && entry.Key < root.right.key {
+	if balance < -1 && key < root.right.key {
 		root.right = rightRotate(root.right)
 		return leftRotate(root)
 	}
@@ -179,8 +179,8 @@ func find(root *avlNode, key string, ts uint64) *Entry {
 }
 
 func commonParent(root *avlNode, keyRange *keyRange) *avlNode {
-	startKey := keyRange.startKey
-	endKey := keyRange.endKey
+	startKey := string(keyRange.startKey)
+	endKey := string(keyRange.endKey)
 	if root == nil {
 		return nil
 	}
@@ -194,8 +194,8 @@ func commonParent(root *avlNode, keyRange *keyRange) *avlNode {
 }
 
 func rangeQuery(root *avlNode, keyRange *keyRange, ts uint64) (entries []*Entry) {
-	startKey := keyRange.startKey
-	endKey := keyRange.endKey
+	startKey := string(keyRange.startKey)
+	endKey := string(keyRange.endKey)
 	if root == nil {
 		return entries
 	}

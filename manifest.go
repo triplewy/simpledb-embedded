@@ -9,14 +9,14 @@ import (
 )
 
 // NewSSTFile adds new SST file to in-memory manifest and sends update request to manifest channel
-func (level *level) NewSSTFile(fileID string, keyRange *keyRange, bloom *bloom) {
+func (level *level) NewSSTFile(fileID string, keyRange *keyRange, pBloom, rBloom *bloom) {
 	level.manifestLock.Lock()
-	level.manifest[fileID] = keyRange
+	level.manifest[fileID] = &manifest{
+		keyRange:     keyRange,
+		primaryBloom: pBloom,
+		rangeBloom:   rBloom,
+	}
 	level.manifestLock.Unlock()
-
-	level.bloomLock.Lock()
-	level.blooms[fileID] = bloom
-	level.bloomLock.Unlock()
 
 	if level.level == 0 && len(level.manifest)-len(level.merging) > compactThreshold {
 		compact := level.mergeManifest()
@@ -25,15 +25,14 @@ func (level *level) NewSSTFile(fileID string, keyRange *keyRange, bloom *bloom) 
 }
 
 // FindSSTFile finds files in level where key falls in their key range
-func (level *level) FindSSTFile(key string) (filenames []string) {
+func (level *level) FindSSTFile(primaryKey, rangeKey []byte) (filenames []string) {
 	level.manifestLock.RLock()
-	level.bloomLock.RLock()
 	defer level.manifestLock.RUnlock()
-	defer level.bloomLock.RUnlock()
 
-	for filename, item := range level.manifest {
-		if item.startKey <= key && key <= item.endKey {
-			if level.blooms[filename].Check(key) {
+	key := string(append(primaryKey, rangeKey...))
+	for filename, m := range level.manifest {
+		if m.keyRange.startKey <= key && key <= m.keyRange.endKey {
+			if m.primaryBloom.Check(primaryKey) && m.rangeBloom.Check(rangeKey) {
 				filenames = append(filenames, filepath.Join(level.directory, filename+".sst"))
 			}
 		}
@@ -58,17 +57,14 @@ func (level *level) RangeSSTFiles(startKey, endKey string) (filenames []string) 
 func (level *level) DeleteSSTFiles(files []string) error {
 	level.manifestLock.Lock()
 	level.mergeLock.Lock()
-	level.bloomLock.Lock()
 	for _, file := range files {
 		arr := strings.Split(file, "/")
 		id := strings.Split(arr[len(arr)-1], ".")[0]
 		delete(level.manifest, id)
 		delete(level.merging, id)
-		delete(level.blooms, id)
 	}
 	level.manifestLock.Unlock()
 	level.mergeLock.Unlock()
-	level.bloomLock.Unlock()
 
 	for _, file := range files {
 		err := os.RemoveAll(file)

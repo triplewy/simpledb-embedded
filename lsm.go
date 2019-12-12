@@ -37,30 +37,36 @@ func newLSM(directory string) (*lsm, error) {
 
 // Write takes data blocks, an index block, and a key range as input and writes an SST File to level 0.
 // It then adds this new file to level 0's manifest
-func (lsm *lsm) Write(blocks, index []byte, bloom *bloom, keyRange *keyRange) error {
+func (lsm *lsm) Write(entries []*Entry) error {
 	level := lsm.levels[0]
 	fileID := level.getUniqueID()
 	filename := filepath.Join(level.directory, fileID+".sst")
 
-	keyRangeEntry := createkeyRangeEntry(keyRange)
-	header := createHeader(len(blocks), len(index), len(bloom.bits), len(keyRangeEntry))
-	data := append(header, append(append(append(blocks, index...), bloom.bits...), keyRangeEntry...)...)
-
-	err := lsm.fm.Write(filename, data)
+	dataBlocks, indexBlock, pBloom, rBloom, keyRange, err := writeEntries(entries)
 	if err != nil {
 		return err
 	}
+	keyRangeEntry := createkeyRangeEntry(keyRange)
+	header := createHeader(len(dataBlocks), len(indexBlock), len(pBloom.bits), len(rBloom.bits), len(keyRangeEntry))
+	data := append(header, dataBlocks...)
+	data = append(data, indexBlock...)
+	data = append(data, pBloom.bits...)
+	data = append(data, rBloom.bits...)
+	data = append(data, keyRangeEntry...)
 
-	level.NewSSTFile(fileID, keyRange, bloom)
-
+	err = lsm.fm.Write(filename, data)
+	if err != nil {
+		return err
+	}
+	level.NewSSTFile(fileID, keyRange, pBloom, rBloom)
 	return nil
 }
 
 // Read goes through each level of the LSM tree and returns if a result is found for the given key.
 // If no result is found, Find throws a KeyNotFound error
-func (lsm *lsm) Read(key string, ts uint64) (*Entry, error) {
+func (lsm *lsm) Read(primaryKey, rangeKey []byte, ts uint64) (*Entry, error) {
 	for _, level := range lsm.levels {
-		entry, err := level.Find(key, ts)
+		entry, err := level.Find(primaryKey, rangeKey, ts)
 		if err != nil {
 			switch err.(type) {
 			case *ErrKeyNotFound:

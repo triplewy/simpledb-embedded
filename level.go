@@ -20,6 +20,12 @@ type keyRange struct {
 	endKey   string
 }
 
+type manifest struct {
+	keyRange     *keyRange
+	primaryBloom *bloom
+	rangeBloom   *bloom
+}
+
 type merge struct {
 	files    []string
 	keyRange *keyRange
@@ -40,12 +46,8 @@ type level struct {
 	merging   map[string]struct{}
 	mergeLock sync.RWMutex
 
-	manifest     map[string]*keyRange
-	manifestSync map[string]*keyRange
+	manifest     map[string]*manifest
 	manifestLock sync.RWMutex
-
-	blooms    map[string]*bloom
-	bloomLock sync.RWMutex
 
 	compactReqChan   chan []*merge
 	compactReplyChan chan []string
@@ -64,26 +66,20 @@ func newLevel(numLevel int, directory string, fm *fileManager) (*level, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	capacity := 0
 	if numLevel == 0 {
 		capacity = 2 * MemTableSize
 	} else {
 		capacity = int(math.Pow10(numLevel)) * multiplier
 	}
-
 	lvl := &level{
 		level:     numLevel,
 		capacity:  capacity,
 		size:      0,
 		directory: filepath.Join(directory, "L"+strconv.Itoa(numLevel)),
 
-		merging: make(map[string]struct{}),
-
-		manifest:     make(map[string]*keyRange),
-		manifestSync: make(map[string]*keyRange),
-
-		blooms: make(map[string]*bloom),
+		merging:  make(map[string]struct{}),
+		manifest: make(map[string]*manifest),
 
 		compactReqChan:   make(chan []*merge, 16),
 		compactReplyChan: make(chan []string, 16),
@@ -101,15 +97,15 @@ func newLevel(numLevel int, directory string, fm *fileManager) (*level, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return lvl, nil
 }
 
-func (level *level) Find(key string, ts uint64) (*Entry, error) {
-	filenames := level.FindSSTFile(key)
+func (level *level) Find(primaryKey, rangeKey []byte, ts uint64) (*Entry, error) {
+	filenames := level.FindSSTFile(primaryKey, rangeKey)
 	if len(filenames) == 0 {
 		return nil, newErrKeyNotFound()
 	}
+	key := string(append(primaryKey, rangeKey...))
 	if len(filenames) == 1 {
 		return level.fm.Find(filenames[0], key, ts)
 	}
@@ -160,7 +156,7 @@ func (level *level) Find(key string, ts uint64) (*Entry, error) {
 			if err != nil {
 				fmt.Println(err)
 			}
-			return level.Find(key, ts)
+			return level.Find(primaryKey, rangeKey, ts)
 		default:
 			return nil, err
 		}
@@ -208,13 +204,10 @@ func (level *level) Merge(files []string) ([]string, error) {
 
 		// Get key range and bloom filter
 		level.above.manifestLock.RLock()
-		level.above.bloomLock.RLock()
-		keyRange := level.above.manifest[oldFileID]
-		bloom := level.above.blooms[oldFileID]
+		m := level.above.manifest[oldFileID]
 		level.above.manifestLock.RUnlock()
-		level.above.bloomLock.RUnlock()
 
-		level.NewSSTFile(newFileID, keyRange, bloom)
+		level.NewSSTFile(newFileID, m.keyRange, m.primaryBloom, m.rangeBloom)
 		level.size += size
 		err = os.Rename(file, filepath.Join(level.directory, newFileID+".sst"))
 		if err != nil {
@@ -227,13 +220,10 @@ func (level *level) Merge(files []string) ([]string, error) {
 		// Delete old key range and bloom filter
 		level.above.manifestLock.Lock()
 		level.above.mergeLock.Lock()
-		level.above.bloomLock.Lock()
 		delete(level.above.manifest, oldFileID)
-		delete(level.above.blooms, oldFileID)
 		delete(level.above.merging, oldFileID)
 		level.above.manifestLock.Unlock()
 		level.above.mergeLock.Unlock()
-		level.above.bloomLock.Unlock()
 		return nil, nil
 	}
 
@@ -249,13 +239,13 @@ func (level *level) Merge(files []string) ([]string, error) {
 }
 
 func (level *level) writeMerge(entries []*Entry) error {
-	dataBlocks, indexBlock, bloom, keyRange, err := writeEntries(entries)
+	dataBlocks, indexBlock, pBloom, rBloom, keyRange, err := writeEntries(entries)
 	if err != nil {
 		return err
 	}
 
 	keyRangeEntry := createkeyRangeEntry(keyRange)
-	header := createHeader(len(dataBlocks), len(indexBlock), len(bloom.bits), len(keyRangeEntry))
+	header := createHeader(len(dataBlocks), len(indexBlock), len(pBloom.bits), len(rBloom.bits), len(keyRangeEntry))
 	data := append(header, append(append(append(dataBlocks, indexBlock...), bloom.bits...), keyRangeEntry...)...)
 
 	fileID := level.getUniqueID()
@@ -265,7 +255,7 @@ func (level *level) writeMerge(entries []*Entry) error {
 	if err != nil {
 		return err
 	}
-	level.NewSSTFile(fileID, keyRange, bloom)
+	level.NewSSTFile(fileID, keyRange, pBloom, rBloom)
 	level.size += len(data)
 
 	return nil

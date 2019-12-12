@@ -13,6 +13,13 @@ func max(x, y int) int {
 	return x
 }
 
+func checkKeySize(primaryKey, rangeKey []byte) error {
+	if len(primaryKey)+len(rangeKey) > KeySize {
+		return newErrExceedMaxKeySize(append(primaryKey, rangeKey...))
+	}
+	return nil
+}
+
 // deleteData deletes all data from database
 func deleteData(directory string) error {
 	if _, err := os.Stat(directory); os.IsNotExist(err) {

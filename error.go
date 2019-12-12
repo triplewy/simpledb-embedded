@@ -116,10 +116,10 @@ func (e *ErrNoTypeFound) Error() string {
 }
 
 type ErrExceedMaxKeySize struct {
-	key string
+	key []byte
 }
 
-func newErrExceedMaxKeySize(key string) *ErrExceedMaxKeySize {
+func newErrExceedMaxKeySize(key []byte) *ErrExceedMaxKeySize {
 	return &ErrExceedMaxKeySize{key: key}
 }
 
