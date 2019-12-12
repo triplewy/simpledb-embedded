@@ -2,8 +2,8 @@ package db
 
 import "unicode"
 
-// Read returns Fields from the corresponding entry from the DB
-func (db *DB) Read(key string, Fields []string) (*Entry, error) {
+// Read returns Attributes from the corresponding entry from the DB
+func (db *DB) Read(key string, attributes []string) (*Entry, error) {
 	var result *Entry
 	err := db.ViewTxn(func(txn *Txn) error {
 		entry, err := txn.Read(key)
@@ -17,19 +17,19 @@ func (db *DB) Read(key string, Fields []string) (*Entry, error) {
 		return nil, err
 	}
 	values := make(map[string]*Value)
-	for _, name := range Fields {
-		if value, ok := result.Fields[name]; ok {
+	for _, name := range attributes {
+		if value, ok := result.Attributes[name]; ok {
 			values[name] = value
 		} else {
 			values[name] = nil
 		}
 	}
-	result.Fields = values
+	result.Attributes = values
 	return result, nil
 }
 
 // Scan takes a key and finds all entries that are greater than or equal to that key
-func (db *DB) Scan(key string, Fields []string) (result []*Entry, err error) {
+func (db *DB) Scan(key string, attributes []string) (result []*Entry, err error) {
 	maxRunes := []rune{}
 	for i := 0; i < KeySize; i++ {
 		maxRunes = append(maxRunes, unicode.MaxASCII)
@@ -48,20 +48,20 @@ func (db *DB) Scan(key string, Fields []string) (result []*Entry, err error) {
 	}
 	for _, entry := range result {
 		values := make(map[string]*Value)
-		for _, name := range Fields {
-			if value, ok := entry.Fields[name]; ok {
+		for _, name := range attributes {
+			if value, ok := entry.Attributes[name]; ok {
 				values[name] = value
 			} else {
 				values[name] = nil
 			}
 		}
-		entry.Fields = values
+		entry.Attributes = values
 	}
 	return result, err
 }
 
-// Update updates certain Fields in an entry
-func (db *DB) Update(key string, values map[string][]byte) error {
+// Update updates certain Attributes in an entry
+func (db *DB) Update(key string, values map[string]*Value) error {
 	exists, err := db.checkPrimaryKey(key)
 	if err != nil {
 		return err
@@ -74,17 +74,17 @@ func (db *DB) Update(key string, values map[string][]byte) error {
 		if err != nil {
 			return err
 		}
-		for name, data := range values {
-			entry.Fields[name] = &Value{DataType: Bytes, Data: data}
+		for name, value := range values {
+			entry.Attributes[name] = value
 		}
-		txn.Write(key, entry.Fields)
+		txn.Write(key, entry.Attributes)
 		return nil
 	})
 	return err
 }
 
 // Insert first checks if the key exists and if not, it inserts the new entry into the DB
-func (db *DB) Insert(key string, values map[string][]byte) error {
+func (db *DB) Insert(key string, values map[string]*Value) error {
 	exists, err := db.checkPrimaryKey(key)
 	if err != nil {
 		return err
@@ -92,12 +92,8 @@ func (db *DB) Insert(key string, values map[string][]byte) error {
 	if exists {
 		return newErrKeyAlreadyExists(key)
 	}
-	Fields := make(map[string]*Value)
-	for name, data := range values {
-		Fields[name] = &Value{DataType: Bytes, Data: data}
-	}
 	err = db.UpdateTxn(func(txn *Txn) error {
-		txn.Write(key, Fields)
+		txn.Write(key, values)
 		return nil
 	})
 	return err

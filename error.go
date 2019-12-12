@@ -112,7 +112,7 @@ func newErrNoTypeFound() *ErrNoTypeFound {
 }
 
 func (e *ErrNoTypeFound) Error() string {
-	return "No DB Type found"
+	return "No valid type found"
 }
 
 type ErrExceedMaxKeySize struct {
@@ -159,14 +159,14 @@ func (e *ErrTxnAbort) Error() string {
 	return fmt.Sprintf("Txn aborted due to concurrent writes to key(s) from other txns")
 }
 
-type ErrExceedMaxFields struct{}
+type ErrExceedMaxAttributes struct{}
 
-func newErrExceedMaxFields() *ErrExceedMaxFields {
-	return &ErrExceedMaxFields{}
+func newErrExceedMaxAttributes() *ErrExceedMaxAttributes {
+	return &ErrExceedMaxAttributes{}
 }
 
-func (e *ErrExceedMaxFields) Error() string {
-	return fmt.Sprintf("Amount of Fields in entry exceed maximum (%d) amount of Fields", MaxFields)
+func (e *ErrExceedMaxAttributes) Error() string {
+	return fmt.Sprintf("Amount of Attributes in entry exceed maximum (%d) amount of Attributes", MaxAttributes)
 }
 
 type ErrExceedMaxEntrySize struct{}

@@ -18,8 +18,8 @@ const KeySize = 255
 // EntrySize is max size for entire entry
 const EntrySize = KB
 
-// MaxFields is max amount of Fields per entry
-const MaxFields = 10
+// MaxAttributes is max amount of Attributes per entry
+const MaxAttributes = 10
 
 const timestampSize = 8
 
@@ -41,6 +41,7 @@ const filePerm = 0600
 const (
 	Bool uint8 = iota
 	Int
+	Uint
 	Float
 	String
 	Bytes

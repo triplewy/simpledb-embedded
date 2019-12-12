@@ -110,21 +110,21 @@ func (db *DB) write(entries []*Entry) error {
 	return <-errChan
 }
 
-// get retrieves Fields for a given key or returns key not found
+// get retrieves Attributes for a given key or returns key not found
 func (db *DB) read(key string, ts uint64) (*Entry, error) {
 	if len(key) > KeySize {
 		return nil, newErrExceedMaxKeySize(key)
 	}
 	entry := db.mutable.table.Find(key, ts)
 	if entry != nil {
-		if entry.Fields == nil {
+		if entry.Attributes == nil {
 			return nil, newErrKeyNotFound()
 		}
 		return entry, nil
 	}
 	entry = db.immutable.table.Find(key, ts)
 	if entry != nil {
-		if entry.Fields == nil {
+		if entry.Attributes == nil {
 			return nil, newErrKeyNotFound()
 		}
 		return entry, nil
@@ -133,7 +133,7 @@ func (db *DB) read(key string, ts uint64) (*Entry, error) {
 	if err != nil {
 		return nil, err
 	}
-	if entry.Fields == nil {
+	if entry.Attributes == nil {
 		return nil, newErrKeyNotFound()
 	}
 	return entry, nil

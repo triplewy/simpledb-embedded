@@ -22,18 +22,18 @@ func (txn *Txn) Read(key string) (*Entry, error) {
 }
 
 // Write updates the write cache of the txn
-func (txn *Txn) Write(key string, Fields map[string]*Value) {
+func (txn *Txn) Write(key string, attributes map[string]*Value) {
 	txn.writeCache[key] = &Entry{
-		Key:    key,
-		Fields: Fields,
+		Key:        key,
+		Attributes: attributes,
 	}
 }
 
 // Delete updates the write cache of the txn
 func (txn *Txn) Delete(key string) {
 	txn.writeCache[key] = &Entry{
-		Key:    key,
-		Fields: nil,
+		Key:        key,
+		Attributes: nil,
 	}
 }
 

@@ -79,7 +79,7 @@ func TestTxnAbortRWRW(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			txn.Write("test", map[string]*Value{"value": &Value{DataType: String, Data: []byte(string(entry.Fields["value"].Data) + " 1")}})
+			txn.Write("test", map[string]*Value{"value": &Value{DataType: String, Data: []byte(string(entry.Attributes["value"].Data) + " 1")}})
 			time.Sleep(100 * time.Millisecond)
 			return nil
 		})
@@ -94,7 +94,7 @@ func TestTxnAbortRWRW(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			txn.Write("test", map[string]*Value{"value": &Value{DataType: String, Data: []byte(string(entry.Fields["value"].Data) + " 2")}})
+			txn.Write("test", map[string]*Value{"value": &Value{DataType: String, Data: []byte(string(entry.Attributes["value"].Data) + " 2")}})
 			return nil
 		})
 		errChan <- err
@@ -114,8 +114,8 @@ func TestTxnAbortRWRW(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error reading from DB: %v\n", err)
 	}
-	if !(string(result.Fields["value"].Data) == "test 1" || string(result.Fields["value"].Data) == "test 2") {
-		t.Fatalf("Wrong result from read Txn. Got: %v\n", string(result.Fields["value"].Data))
+	if !(string(result.Attributes["value"].Data) == "test 1" || string(result.Attributes["value"].Data) == "test 2") {
+		t.Fatalf("Wrong result from read Txn. Got: %v\n", string(result.Attributes["value"].Data))
 	}
 }
 
@@ -162,7 +162,7 @@ func TestTxnAbortWRW(t *testing.T) {
 				return err
 			}
 			time.Sleep(800 * time.Millisecond)
-			txn.Write("test", map[string]*Value{"value": &Value{DataType: String, Data: []byte(string(entry.Fields["value"].Data) + " test")}})
+			txn.Write("test", map[string]*Value{"value": &Value{DataType: String, Data: []byte(string(entry.Attributes["value"].Data) + " test")}})
 			fmt.Println("finished RW")
 			return nil
 		})
@@ -183,7 +183,7 @@ func TestTxnAbortWRW(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error reading from DB: %v\n", err)
 	}
-	if !(string(result.Fields["value"].Data) == "test test" || string(result.Fields["value"].Data) == "foo") {
-		t.Fatalf("Wrong result from read Txn. Got: %v\n", string(result.Fields["value"].Data))
+	if !(string(result.Attributes["value"].Data) == "test test" || string(result.Attributes["value"].Data) == "foo") {
+		t.Fatalf("Wrong result from read Txn. Got: %v\n", string(result.Attributes["value"].Data))
 	}
 }

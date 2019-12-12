@@ -1,7 +1,6 @@
 package db
 
 import (
-	"bytes"
 	"strconv"
 	"testing"
 )
@@ -11,11 +10,16 @@ func TestAPIInsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
-	err = db.Insert("test", map[string][]byte{"value": []byte("test")})
+	value, err := CreateValue("test")
+	if err != nil {
+		t.Fatalf("Error creating value: %v\n", err)
+	}
+	err = db.Insert("test", map[string]*Value{"value": value})
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
-	err = db.Insert("test", map[string][]byte{"value": []byte("another test")})
+	value, err = CreateValue("another test")
+	err = db.Insert("test", map[string]*Value{"value": value})
 	if _, ok := err.(*ErrKeyAlreadyExists); !ok {
 		t.Fatalf("Expected: ErrKeyAlreadyExists, Got: %v\n", err)
 	}
@@ -23,8 +27,16 @@ func TestAPIInsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error reading from db: %v\n", err)
 	}
-	if string(entry.Fields["value"].Data) != "test" {
-		t.Fatalf("Got wrong read\n")
+	if value, ok := entry.Attributes["value"]; ok {
+		v, err := ParseValue(value)
+		if err != nil {
+			t.Fatalf("Error parsing value: %v\n", err)
+		}
+		if v.(string) != "test" {
+			t.Fatalf("Got wrong read\n")
+		}
+	} else {
+		t.Fatalf("Error entry does not have 'value' attribute\n")
 	}
 }
 
@@ -33,15 +45,27 @@ func TestAPIUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
-	err = db.Update("test", map[string][]byte{"value": []byte("test")})
+	value, err := CreateValue("test")
+	if err != nil {
+		t.Fatalf("Error creating value: %v\n", err)
+	}
+	err = db.Update("test", map[string]*Value{"value": value})
 	if _, ok := err.(*ErrKeyNotFound); !ok {
 		t.Fatalf("Expected: ErrKeyNotFound, Got: %v\n", err)
 	}
-	err = db.Insert("test", map[string][]byte{"value": []byte("test")})
+	value, err = CreateValue("test")
+	if err != nil {
+		t.Fatalf("Error creating value: %v\n", err)
+	}
+	err = db.Insert("test", map[string]*Value{"value": value})
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
-	err = db.Update("test", map[string][]byte{"value": []byte("another test")})
+	value, err = CreateValue("another test")
+	if err != nil {
+		t.Fatalf("Error creating value: %v\n", err)
+	}
+	err = db.Update("test", map[string]*Value{"value": value})
 	if err != nil {
 		t.Fatalf("Error updating db: %v\n", err)
 	}
@@ -49,8 +73,16 @@ func TestAPIUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error reading from db: %v\n", err)
 	}
-	if string(entry.Fields["value"].Data) != "another test" {
-		t.Fatalf("Got wrong read\n")
+	if value, ok := entry.Attributes["value"]; ok {
+		v, err := ParseValue(value)
+		if err != nil {
+			t.Fatalf("Error parsing value: %v\n", err)
+		}
+		if v.(string) != "another test" {
+			t.Fatalf("Got wrong read\n")
+		}
+	} else {
+		t.Fatalf("Error entry does not have 'value' attribute\n")
 	}
 }
 
@@ -63,7 +95,11 @@ func TestAPIDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error deleting from db: %v\n", err)
 	}
-	err = db.Insert("test", map[string][]byte{"value": []byte("test")})
+	value, err := CreateValue("test")
+	if err != nil {
+		t.Fatalf("Error creating value: %v\n", err)
+	}
+	err = db.Insert("test", map[string]*Value{"value": value})
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
@@ -71,8 +107,16 @@ func TestAPIDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error reading from db: %v\n", err)
 	}
-	if string(entry.Fields["value"].Data) != "test" {
-		t.Fatalf("Got wrong read\n")
+	if value, ok := entry.Attributes["value"]; ok {
+		v, err := ParseValue(value)
+		if err != nil {
+			t.Fatalf("Error parsing value: %v\n", err)
+		}
+		if v.(string) != "test" {
+			t.Fatalf("Got wrong read\n")
+		}
+	} else {
+		t.Fatalf("Error entry does not have 'value' attribute\n")
 	}
 	err = db.Delete("test")
 	if err != nil {
@@ -89,7 +133,15 @@ func TestAPIRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
-	err = db.Insert("test", map[string][]byte{"1": []byte("1"), "2": []byte("2"), "3": []byte("3")})
+	values := make(map[string]*Value)
+	for i := int64(1); i < 4; i++ {
+		value, err := CreateValue(i)
+		if err != nil {
+			t.Fatalf("Error creating value: %v\n", err)
+		}
+		values[strconv.FormatInt(i, 10)] = value
+	}
+	err = db.Insert("test", values)
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
@@ -100,16 +152,24 @@ func TestAPIRead(t *testing.T) {
 	for i := 1; i < 5; i++ {
 		key := strconv.Itoa(i)
 		if i == 4 {
-			if entry.Fields[key] != nil {
-				t.Fatalf("values[1] Expected: nil, Got: %v\n", entry.Fields[key])
+			if entry.Attributes[key] != nil {
+				t.Fatalf("values[1] Expected: nil, Got: %v\n", entry.Attributes[key])
 			}
 		} else {
-			if !bytes.Equal(entry.Fields[key].Data, []byte(key)) {
-				t.Fatalf("values[1] Expected: %v, Got: %v\n", []byte(key), entry.Fields[key].Data)
+			value, err := ParseValue(entry.Attributes[key])
+			if err != nil {
+				t.Fatalf("Error parsing value: %v\n", err)
+			}
+			if value.(int64) != int64(i) {
+				t.Fatalf("values[1] Expected: %v, Got: %d\n", []byte(key), value.(int64))
 			}
 		}
 	}
-	err = db.Update("test", map[string][]byte{"4": []byte("4")})
+	value, err := CreateValue(int64(4))
+	if err != nil {
+		t.Fatalf("Error creating value: %v\n", err)
+	}
+	err = db.Update("test", map[string]*Value{"4": value})
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
@@ -119,8 +179,12 @@ func TestAPIRead(t *testing.T) {
 	}
 	for i := 1; i < 5; i++ {
 		key := strconv.Itoa(i)
-		if !bytes.Equal(entry.Fields[key].Data, []byte(key)) {
-			t.Fatalf("values[1] Expected: %v, Got: %v\n", []byte(key), entry.Fields[key].Data)
+		value, err := ParseValue(entry.Attributes[key])
+		if err != nil {
+			t.Fatalf("Error parsing value: %v\n", err)
+		}
+		if value.(int64) != int64(i) {
+			t.Fatalf("values[1] Expected: %v, Got: %d\n", []byte(key), value.(int64))
 		}
 	}
 }
@@ -130,7 +194,11 @@ func TestAPIScan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
-	err = db.Insert("test", map[string][]byte{"value": []byte("test")})
+	value, err := CreateValue("test")
+	if err != nil {
+		t.Fatalf("Error creating value: %v\n", err)
+	}
+	err = db.Insert("test", map[string]*Value{"value": value})
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
@@ -141,7 +209,11 @@ func TestAPIScan(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("Scan length, Expected: 1, Got: %d\n", len(entries))
 	}
-	if v, ok := entries[0].Fields["value"]; !(ok && bytes.Equal(v.Data, []byte("test"))) {
+	v, err := ParseValue(entries[0].Attributes["value"])
+	if err != nil {
+		t.Fatalf("Error parsing value: %v\n", err)
+	}
+	if v.(string) != "test" {
 		t.Fatalf("Wrong value for scan\n")
 	}
 	entries, err = db.Scan("u", []string{"value"})
@@ -151,11 +223,11 @@ func TestAPIScan(t *testing.T) {
 	if len(entries) != 0 {
 		t.Fatalf("Scan length, Expected: 0, Got: %d\n", len(entries))
 	}
-	err = db.Insert("z", map[string][]byte{"value": []byte("test")})
+	err = db.Insert("z", map[string]*Value{"value": value})
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
-	err = db.Insert("zz999", map[string][]byte{"value": []byte("test")})
+	err = db.Insert("zz999", map[string]*Value{"value": value})
 	if err != nil {
 		t.Fatalf("Error inserting into db: %v\n", err)
 	}
@@ -167,7 +239,11 @@ func TestAPIScan(t *testing.T) {
 		t.Fatalf("Scan length, Expected: 1, Got: %d\n", len(entries))
 	}
 	for _, entry := range entries {
-		if v, ok := entry.Fields["value"]; !(ok && bytes.Equal(v.Data, []byte("test"))) {
+		v, err := ParseValue(entry.Attributes["value"])
+		if err != nil {
+			t.Fatalf("Error parsing value: %v\n", err)
+		}
+		if v.(string) != "test" {
 			t.Fatalf("Wrong value for scan\n")
 		}
 	}
