@@ -120,3 +120,42 @@ func TestRecoverUnexpected(t *testing.T) {
 		t.Fatalf("Error recovering lsm")
 	}
 }
+
+func TestRecoverTS(t *testing.T) {
+	db, err := setupDB("data")
+	if err != nil {
+		t.Fatalf("Error setting up DB: %v\n", err)
+	}
+
+	numItems := 16
+	memorykv := make(map[string]string)
+	keys := []string{}
+	entries := []*Entry{}
+
+	for i := 0; i < numItems; i++ {
+		key := string(uint64ToBytes(uint64(i)))
+		keys = append(keys, key)
+		buf := make([]byte, 1000)
+		value := string(buf)
+		entry := simpleEntry(uint64(i), key, value)
+		entries = append(entries, entry)
+	}
+
+	err = asyncUpdateTxns(db, entries, memorykv)
+	if err != nil {
+		t.Fatalf("Error inserting into lsm: %v\n", err)
+	}
+
+	time.Sleep(2 * time.Second)
+	db.Close()
+
+	db, err = NewDB("data")
+	if err != nil {
+		t.Fatalf("Error creating DB: %v\n", err)
+	}
+
+	err = asyncViewTxns(db, keys, memorykv)
+	if err != nil {
+		fmt.Printf("Error reading from db: %v\n", err)
+	}
+}

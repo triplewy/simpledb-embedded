@@ -95,7 +95,7 @@ func TestDBDelete(t *testing.T) {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
 
-	numItems := 20000
+	numItems := 10000
 	memorykv := make(map[string]string)
 	entries := []*Entry{}
 
@@ -198,7 +198,7 @@ func TestDBRange(t *testing.T) {
 		t.Fatalf("Error setting up DB: %v\n", err)
 	}
 
-	numItems := 20000
+	numItems := 10000
 	memorykv := make(map[string]string)
 	entries := []*Entry{}
 

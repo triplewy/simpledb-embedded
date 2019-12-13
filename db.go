@@ -49,6 +49,15 @@ func NewDB(directory string) (*DB, error) {
 	if maxCommitTs2 > maxCommitTs {
 		maxCommitTs = maxCommitTs2
 	}
+	// if last committed ts is 0, then there is possibility that immutable flushed
+	// and mutable did not receive any entries. So need to check all L0 files for last ts
+	if maxCommitTs == 0 {
+		ts, err := lsm.RecoverTS()
+		if err != nil {
+			return nil, err
+		}
+		maxCommitTs = ts
+	}
 
 	db := &DB{
 		mutable:   memtable1,

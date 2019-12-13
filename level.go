@@ -345,6 +345,25 @@ func (level *level) Recoverlevel() error {
 	return nil
 }
 
+// RecoverTS read data of every single sst file and returns max commit ts found
+func (level *level) RecoverTS() (uint64, error) {
+	maxCommitTs := uint64(0)
+	level.manifestLock.RLock()
+	defer level.manifestLock.RUnlock()
+	for file := range level.manifest {
+		entries, err := level.fm.MMap(filepath.Join(level.directory, file+".sst"))
+		if err != nil {
+			return 0, err
+		}
+		for _, entry := range entries {
+			if entry.ts > maxCommitTs {
+				maxCommitTs = entry.ts
+			}
+		}
+	}
+	return maxCommitTs, nil
+}
+
 // Close closes all level's operations including merging, compacting, and adding SST files.
 func (level *level) Close() {
 	level.close <- struct{}{}

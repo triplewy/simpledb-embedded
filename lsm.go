@@ -120,6 +120,21 @@ func (lsm *lsm) Scan(keyRange *keyRange, ts uint64) ([]*Entry, error) {
 	return result, nil
 }
 
+// RecoverTS searches each level's max commit ts until it reaches end or finds a
+// commit ts > 0
+func (lsm *lsm) RecoverTS() (uint64, error) {
+	for _, level := range lsm.levels {
+		ts, err := level.RecoverTS()
+		if err != nil {
+			return 0, err
+		}
+		if ts > 0 {
+			return ts, nil
+		}
+	}
+	return 0, nil
+}
+
 // Close closes all levels in the LSM
 func (lsm *lsm) Close() {
 	for _, level := range lsm.levels {
