@@ -1,6 +1,8 @@
 package db
 
-import "unicode"
+import (
+	"unicode"
+)
 
 // Read returns Attributes from the corresponding entry from the DB
 func (db *DB) Read(key string, attributes []string) (*Entry, error) {

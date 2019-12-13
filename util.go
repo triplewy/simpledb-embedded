@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/binary"
 	"io/ioutil"
 	"os"
 	"path"
@@ -11,6 +12,18 @@ func max(x, y int) int {
 		return y
 	}
 	return x
+}
+
+// Converts bytes to an integer
+func bytesToUint64(b []byte) uint64 {
+	return binary.LittleEndian.Uint64(b)
+}
+
+// Converts a uint to a byte slice
+func uint64ToBytes(u uint64) []byte {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, u)
+	return buf
 }
 
 // deleteData deletes all data from database

@@ -14,7 +14,7 @@ type DB struct {
 	mutable   *memTable
 	immutable *memTable
 	lsm       *lsm
-	memory    *memory
+	snaphots  *doublyLinkedList
 
 	writeChan chan *writeRequest
 	flushChan chan *memTable
@@ -53,15 +53,12 @@ func NewDB(directory string) (*DB, error) {
 	db := &DB{
 		mutable:   memtable1,
 		immutable: memtable2,
+		lsm:       lsm,
+		snaphots:  newDoublyLinkedList(),
 
 		writeChan: make(chan *writeRequest),
 		flushChan: make(chan *memTable),
-
-		lsm: lsm,
-
-		memory: newMemory(),
-
-		close: make(chan struct{}, 1),
+		close:     make(chan struct{}, 1),
 	}
 
 	oracle := newOracle(maxCommitTs+1, db)

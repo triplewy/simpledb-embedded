@@ -21,8 +21,8 @@ func setupDB(directory string) (*DB, error) {
 
 func simpleEntry(ts uint64, key, value string) *Entry {
 	return &Entry{
-		ts:     ts,
-		Key:    key,
+		ts:         ts,
+		Key:        key,
 		Attributes: map[string]*Value{"value": &Value{DataType: String, Data: []byte(value)}},
 	}
 }
