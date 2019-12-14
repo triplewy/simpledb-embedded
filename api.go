@@ -64,7 +64,7 @@ func (db *DB) Scan(key string, attributes []string) (result []*Entry, err error)
 
 // Update updates certain Attributes in an entry
 func (db *DB) Update(key string, values map[string]*Value) error {
-	exists, err := db.checkPrimaryKey(key)
+	exists, err := db.exists(key)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (db *DB) Update(key string, values map[string]*Value) error {
 
 // Insert first checks if the key exists and if not, it inserts the new entry into the DB
 func (db *DB) Insert(key string, values map[string]*Value) error {
-	exists, err := db.checkPrimaryKey(key)
+	exists, err := db.exists(key)
 	if err != nil {
 		return err
 	}

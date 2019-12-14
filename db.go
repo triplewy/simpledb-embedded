@@ -79,30 +79,19 @@ func NewDB(directory string) (*DB, error) {
 	return db, nil
 }
 
-// newTxn returns a new Txn to perform ops on
-func (db *DB) newTxn() *Txn {
-	startTs := db.oracle.requestStart()
-	return &Txn{
-		db:         db,
-		startTs:    startTs,
-		writeCache: make(map[string]*Entry),
-		readSet:    make(map[string]uint64),
-	}
-}
-
 // ViewTxn implements a read only transaction to the DB. Ensures read only since it does not commit at end
 func (db *DB) ViewTxn(fn func(txn *Txn) error) error {
-	txn := db.newTxn()
+	txn := db.StartTxn()
 	return fn(txn)
 }
 
 // UpdateTxn implements a read and write only transaction to the DB
 func (db *DB) UpdateTxn(fn func(txn *Txn) error) error {
-	txn := db.newTxn()
+	txn := db.StartTxn()
 	if err := fn(txn); err != nil {
 		return err
 	}
-	return txn.commit()
+	return txn.Commit()
 }
 
 // write inserts multiple entries into DB
@@ -190,7 +179,7 @@ func (db *DB) scan(startKey, endKey string, ts uint64) ([]*Entry, error) {
 	return result, nil
 }
 
-func (db *DB) checkPrimaryKey(key string) (bool, error) {
+func (db *DB) exists(key string) (bool, error) {
 	_, err := db.read(key, math.MaxUint64)
 	if err != nil {
 		switch err.(type) {

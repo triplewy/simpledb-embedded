@@ -1,1 +1,1 @@
-# SimpleDB Embedded Database
+# SimpleDB Embedded DB

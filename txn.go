@@ -11,6 +11,16 @@ type Txn struct {
 	readSet    map[string]uint64
 }
 
+// StartTxn returns a new Txn to perform ops on
+func (db *DB) StartTxn() *Txn {
+	return &Txn{
+		db:         db,
+		startTs:    db.oracle.requestStart(),
+		writeCache: make(map[string]*Entry),
+		readSet:    make(map[string]uint64),
+	}
+}
+
 // Read gets value for a key from the DB and updates the txn readSet
 func (txn *Txn) Read(key string) (*Entry, error) {
 	entry, err := txn.db.read(key, txn.startTs)
@@ -49,8 +59,22 @@ func (txn *Txn) Scan(startKey, endKey string) ([]*Entry, error) {
 	return kvs, nil
 }
 
+// Exists checks if key exists in the db
+func (txn *Txn) Exists(key string) (bool, error) {
+	_, err := txn.Read(key)
+	if err != nil {
+		switch err.(type) {
+		case *ErrKeyNotFound:
+			return false, nil
+		default:
+			return false, err
+		}
+	}
+	return true, nil
+}
+
 // Commit sends the txn's read and write set to the oracle for commit
-func (txn *Txn) commit() error {
+func (txn *Txn) Commit() error {
 	if len(txn.writeCache) == 0 {
 		return nil
 	}
